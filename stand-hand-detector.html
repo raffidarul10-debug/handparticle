@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>✦ Star Constellation 3D</title>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; font-family:'Courier New',monospace; overflow:hidden; color:#fff; }
+#c { position:fixed; inset:0; z-index:1; cursor:grab; }
+#c:active { cursor:grabbing; }
+
+#videoWrapper {
+  position:fixed; bottom:20px; right:20px; z-index:10;
+  border:1px solid rgba(100,200,255,0.25); border-radius:10px;
+  overflow:hidden; width:180px; height:135px;
+  box-shadow: 0 0 20px rgba(100,200,255,0.1);
+}
+video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); display:block; }
+#hc { position:absolute; top:0; left:0; width:100%; height:100%; transform:scaleX(-1); }
+
+#ui { position:fixed; top:20px; left:20px; z-index:10; }
+.title { font-size:18px; letter-spacing:5px; color:#a0d8ff; text-shadow:0 0 20px rgba(100,200,255,0.5); }
+.sub   { font-size:9px; letter-spacing:3px; color:rgba(150,200,255,0.35); margin-top:3px; }
+
+#gbox {
+  margin-top:12px; padding:10px 14px;
+  background:rgba(0,15,40,0.8); border:1px solid rgba(100,200,255,0.15);
+  border-radius:8px; backdrop-filter:blur(8px); min-width:220px;
+}
+.gl { font-size:8px; letter-spacing:2px; color:rgba(100,200,255,0.4); margin-bottom:5px; }
+.gn { font-size:13px; letter-spacing:1px; font-weight:bold; transition:color .3s; }
+.gshape { font-size:10px; letter-spacing:2px; color:rgba(255,255,255,0.3); margin-top:3px; }
+
+#gestures {
+  margin-top:10px; padding:10px 14px;
+  background:rgba(0,15,40,0.8); border:1px solid rgba(100,200,255,0.1);
+  border-radius:8px; backdrop-filter:blur(8px);
+}
+.gl2 { font-size:8px; letter-spacing:2px; color:rgba(100,200,255,0.4); margin-bottom:7px; }
+.grow {
+  display:flex; align-items:center; gap:8px;
+  font-size:9px; letter-spacing:1px; color:rgba(180,210,255,0.35);
+  padding:2px 0; transition:color .2s;
+}
+.grow.active { color:rgba(180,210,255,0.9); }
+.gem { font-size:13px; }
+.gbar { width:4px; height:4px; border-radius:50%; background:rgba(100,200,255,0.2); flex-shrink:0; }
+.gbar.active { background:#7dd8ff; box-shadow:0 0 6px #7dd8ff; }
+
+#status {
+  position:fixed; top:20px; right:20px; z-index:10;
+  font-size:9px; letter-spacing:2px; color:rgba(100,200,255,0.45);
+}
+.dot { display:inline-block; width:5px; height:5px; border-radius:50%;
+  background:#7dd8ff; margin-right:5px; animation:blink 1.2s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
+
+#hint {
+  position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:10;
+  font-size:8px; letter-spacing:2px; color:rgba(100,200,255,0.25);
+  text-align:center;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div class="title">✦ CONSTELLATION 3D</div>
+  <div class="sub">HAND GESTURE → STAR SHAPE</div>
+
+  <div id="gbox">
+    <div class="gl">GESTURE AKTIF</div>
+    <div class="gn" id="gName" style="color:#7dd8ff">— tunjukkan tangan —</div>
+    <div class="gshape" id="gShape">menunggu...</div>
+  </div>
+
+  <div id="gestures">
+    <div class="gl2">9 GESTURE → 9 AKSI</div>
+    <div class="grow" id="r0"><span class="gem">✊</span><span class="gbar"></span><span>KEPALAN → BOLA</span></div>
+    <div class="grow" id="r1"><span class="gem">☝</span><span class="gbar"></span><span>1 JARI → KUBUS</span></div>
+    <div class="grow" id="r2"><span class="gem">✌</span><span class="gbar"></span><span>2 JARI → PIRAMIDA</span></div>
+    <div class="grow" id="r3"><span class="gem">🤟</span><span class="gbar"></span><span>3 JARI → TORUS</span></div>
+    <div class="grow" id="r4"><span class="gem">🖖</span><span class="gbar"></span><span>4 JARI → DNA HELIX</span></div>
+    <div class="grow" id="r5"><span class="gem">✋</span><span class="gbar"></span><span>TELAPAK → BINTANG 3D</span></div>
+    <div class="grow" id="r6"><span class="gem">🤘</span><span class="gbar"></span><span>ROCK → OCTAHEDRON</span></div>
+    <div class="grow" id="r7"><span class="gem">👍</span><span class="gbar"></span><span>JEMPOL → LEDAKAN!</span></div>
+    <div class="grow" id="r8"><span class="gem">🤙</span><span class="gbar"></span><span>SHAKA → ✨ RAFFI ✨</span></div>
+  </div>
+</div>
+
+<div id="status"><span class="dot"></span>MEMULAI...</div>
+
+<div id="videoWrapper">
+  <video id="vid" playsinline autoplay muted></video>
+  <canvas id="hc"></canvas>
+</div>
+
+<div id="hint">DRAG → PUTAR 360° &nbsp;|&nbsp; SCROLL → ZOOM</div>
+
+<script>
+// ═══════════════════════════════════
+// SETUP
+// ═══════════════════════════════════
+const C  = document.getElementById('c');
+const cx = C.getContext('2d');
+const HC = document.getElementById('hc');
+const hx = HC.getContext('2d');
+const vid = document.getElementById('vid');
+
+let W = C.width  = window.innerWidth;
+let H = C.height = window.innerHeight;
+window.addEventListener('resize', () => {
+  W = C.width  = window.innerWidth;
+  H = C.height = window.innerHeight;
+});
+
+// ═══════════════════════════════════
+// 3D MATH
+// ═══════════════════════════════════
+const rotX = (p,a) => { const c=Math.cos(a),s=Math.sin(a); return [p[0],p[1]*c-p[2]*s,p[1]*s+p[2]*c]; };
+const rotY = (p,a) => { const c=Math.cos(a),s=Math.sin(a); return [p[0]*c+p[2]*s,p[1],-p[0]*s+p[2]*c]; };
+const proj = (p,fov,cx,cy) => { const z=p[2]+fov; const sc=fov/z; return [p[0]*sc+cx,p[1]*sc+cy,sc]; };
+
+// ═══════════════════════════════════
+// SHAPE POINT GENERATORS
+// (returns array of 3D points + edge pairs)
+// ═══════════════════════════════════
+const PI = Math.PI;
+
+function genSphere(N, r) {
+  const pts=[], edges=[];
+  // golden spiral for even distribution
+  const phi=(1+Math.sqrt(5))/2;
+  for(let i=0;i<N;i++){
+    const t=i/N;
+    const inc=Math.acos(1-2*t);
+    const az=2*PI*i/phi;
+    pts.push([r*Math.sin(inc)*Math.cos(az), r*Math.cos(inc), r*Math.sin(inc)*Math.sin(az)]);
+  }
+  // connect nearby
+  for(let i=0;i<N;i++){
+    for(let j=i+1;j<N;j++){
+      const d=dist3(pts[i],pts[j]);
+      if(d<r*0.45) edges.push([i,j]);
+    }
+  }
+  return {pts, edges, hue:200, name:'BOLA (SPHERE)'};
+}
+
+function genCube(N, r) {
+  const pts=[], edges=[];
+  // distribute on cube surface
+  const faceN=Math.floor(N/6);
+  const faces=[
+    (u,v)=>[r,u*r*2-r,v*r*2-r],
+    (u,v)=>[-r,u*r*2-r,v*r*2-r],
+    (u,v)=>[u*r*2-r,r,v*r*2-r],
+    (u,v)=>[u*r*2-r,-r,v*r*2-r],
+    (u,v)=>[u*r*2-r,v*r*2-r,r],
+    (u,v)=>[u*r*2-r,v*r*2-r,-r],
+  ];
+  const side=Math.ceil(Math.sqrt(faceN));
+  for(const f of faces){
+    for(let i=0;i<side;i++) for(let j=0;j<side;j++){
+      pts.push(f(i/(side-1), j/(side-1)));
+    }
+  }
+  // edge lines along cube edges
+  const verts=[[-r,-r,-r],[-r,-r,r],[-r,r,-r],[-r,r,r],[r,-r,-r],[r,-r,r],[r,r,-r],[r,r,r]];
+  const edgePairs=[[0,1],[0,2],[0,4],[1,3],[1,5],[2,3],[2,6],[3,7],[4,5],[4,6],[5,7],[6,7]];
+  for(const [a,b] of edgePairs){
+    const steps=12;
+    const va=verts[a], vb=verts[b];
+    const start=pts.length;
+    for(let t=0;t<=steps;t++){
+      pts.push([va[0]+(vb[0]-va[0])*t/steps, va[1]+(vb[1]-va[1])*t/steps, va[2]+(vb[2]-va[2])*t/steps]);
+    }
+    for(let t=0;t<steps;t++) edges.push([start+t, start+t+1]);
+  }
+  return {pts, edges, hue:280, name:'KUBUS (CUBE)'};
+}
+
+function genPyramid(N, r) {
+  const pts=[], edges=[];
+  // base grid
+  const baseN=Math.floor(N*0.5);
+  const baseSide=Math.ceil(Math.sqrt(baseN));
+  for(let i=0;i<baseSide;i++) for(let j=0;j<baseSide;j++){
+    const x=(i/(baseSide-1))*2*r-r;
+    const z=(j/(baseSide-1))*2*r-r;
+    pts.push([x, r, z]);
+  }
+  // 4 faces
+  const apex=[0,-r*1.4,0];
+  const corners=[[-r,r,-r],[r,r,-r],[r,r,r],[-r,r,r]];
+  for(let f=0;f<4;f++){
+    const a=corners[f], b=corners[(f+1)%4], ap=apex;
+    const fN=Math.floor(N*0.1);
+    for(let i=0;i<fN;i++){
+      const s=Math.random(), t=Math.random()*(1-s);
+      pts.push([ap[0]+s*(a[0]-ap[0])+t*(b[0]-ap[0]),
+                ap[1]+s*(a[1]-ap[1])+t*(b[1]-ap[1]),
+                ap[2]+s*(a[2]-ap[2])+t*(b[2]-ap[2])]);
+    }
+  }
+  // edge lines
+  const edgeCurves=[[apex,corners[0]],[apex,corners[1]],[apex,corners[2]],[apex,corners[3]],
+    [corners[0],corners[1]],[corners[1],corners[2]],[corners[2],corners[3]],[corners[3],corners[0]]];
+  for(const [va,vb] of edgeCurves){
+    const steps=14;
+    const start=pts.length;
+    for(let t=0;t<=steps;t++){
+      pts.push([va[0]+(vb[0]-va[0])*t/steps, va[1]+(vb[1]-va[1])*t/steps, va[2]+(vb[2]-va[2])*t/steps]);
+    }
+    for(let t=0;t<steps;t++) edges.push([start+t,start+t+1]);
+  }
+  return {pts, edges, hue:130, name:'PIRAMIDA'};
+}
+
+function genTorus(N, r) {
+  const pts=[], edges=[];
+  const R=r*0.85, tube=r*0.38;
+  const segs=28, sides=14;
+  for(let i=0;i<segs;i++){
+    const a=2*PI*i/segs;
+    const rStart=pts.length;
+    for(let j=0;j<sides;j++){
+      const b=2*PI*j/sides;
+      pts.push([(R+tube*Math.cos(b))*Math.cos(a), tube*Math.sin(b), (R+tube*Math.cos(b))*Math.sin(a)]);
+    }
+    // ring edges
+    for(let j=0;j<sides;j++) edges.push([rStart+j, rStart+(j+1)%sides]);
+  }
+  // longitudinal edges
+  for(let i=0;i<segs;i++){
+    for(let j=0;j<sides;j+=2){
+      edges.push([i*sides+j, ((i+1)%segs)*sides+j]);
+    }
+  }
+  return {pts, edges, hue:35, name:'TORUS (DONAT)'};
+}
+
+function genDNA(N, r) {
+  const pts=[], edges=[];
+  const turns=3.5, segPts=60;
+  const yScale=r*2.4;
+  const strandA=[], strandB=[];
+  for(let i=0;i<segPts;i++){
+    const t=i/(segPts-1);
+    const a=t*turns*2*PI;
+    const y=(t-0.5)*yScale;
+    const pa=[r*0.6*Math.cos(a), y, r*0.6*Math.sin(a)];
+    const pb=[r*0.6*Math.cos(a+PI), y, r*0.6*Math.sin(a+PI)];
+    strandA.push(pts.length); pts.push(pa);
+    strandB.push(pts.length); pts.push(pb);
+  }
+  for(let i=0;i<segPts-1;i++){
+    edges.push([strandA[i],strandA[i+1]]);
+    edges.push([strandB[i],strandB[i+1]]);
+    if(i%4===0){ edges.push([strandA[i],strandB[i]]); }
+  }
+  // fill extra stars scattered around strands
+  for(let i=0;i<N-pts.length;i++){
+    const t=Math.random();
+    const a=t*turns*2*PI+(Math.random()>.5?0:PI);
+    const y=(t-0.5)*yScale;
+    const jit=(Math.random()-.5)*0.15*r;
+    pts.push([r*0.6*Math.cos(a)+jit, y+jit, r*0.6*Math.sin(a)+jit]);
+  }
+  return {pts, edges, hue:85, name:'DNA HELIX'};
+}
+
+function genStar3D(N, r) {
+  const pts=[], edges=[];
+  // 3D star: 6 spikes along ±x ±y ±z
+  const spikes=[[r,0,0],[-r,0,0],[0,r,0],[0,-r,0],[0,0,r],[0,0,-r]];
+  for(const sp of spikes){
+    const steps=16;
+    const start=pts.length;
+    for(let t=0;t<=steps;t++){
+      pts.push([sp[0]*t/steps, sp[1]*t/steps, sp[2]*t/steps]);
+    }
+    for(let t=0;t<steps;t++) edges.push([start+t,start+t+1]);
+    // rings at mid-spike
+    const mid=sp.map(v=>v*0.5);
+    const ringR=r*0.35;
+    const perp1=sp[0]!==0?[0,1,0]:[1,0,0];
+    const perp2=[sp[1]*perp1[2]-sp[2]*perp1[1], sp[2]*perp1[0]-sp[0]*perp1[2], sp[0]*perp1[1]-sp[1]*perp1[0]];
+    const pLen=Math.sqrt(perp2.reduce((s,v)=>s+v*v,0));
+    const p2n=perp2.map(v=>v/pLen);
+    const ringSteps=18;
+    const rStart=pts.length;
+    for(let t=0;t<=ringSteps;t++){
+      const a=2*PI*t/ringSteps;
+      pts.push([mid[0]+ringR*(Math.cos(a)*perp1[0]+Math.sin(a)*p2n[0]),
+                mid[1]+ringR*(Math.cos(a)*perp1[1]+Math.sin(a)*p2n[1]),
+                mid[2]+ringR*(Math.cos(a)*perp1[2]+Math.sin(a)*p2n[2])]);
+    }
+    for(let t=0;t<ringSteps;t++) edges.push([rStart+t,rStart+t+1]);
+  }
+  // random fill
+  while(pts.length<N){
+    const sp=spikes[Math.floor(Math.random()*spikes.length)];
+    const t=Math.random();
+    pts.push([sp[0]*t+(Math.random()-.5)*20, sp[1]*t+(Math.random()-.5)*20, sp[2]*t+(Math.random()-.5)*20]);
+  }
+  return {pts, edges, hue:50, name:'BINTANG 3D'};
+}
+
+function genOctahedron(N, r) {
+  const pts=[], edges=[];
+  const verts=[[0,-r,0],[0,r,0],[r,0,0],[-r,0,0],[0,0,r],[0,0,-r]];
+  const faces=[[0,2,4],[0,4,3],[0,3,5],[0,5,2],[1,4,2],[1,3,4],[1,5,3],[1,2,5]];
+  for(const [a,b,c] of faces){
+    const fN=Math.floor(N/8);
+    for(let i=0;i<fN;i++){
+      let s=Math.random(), t=Math.random();
+      if(s+t>1){s=1-s;t=1-t;}
+      const u=1-s-t;
+      pts.push([verts[a][0]*s+verts[b][0]*t+verts[c][0]*u,
+                verts[a][1]*s+verts[b][1]*t+verts[c][1]*u,
+                verts[a][2]*s+verts[b][2]*t+verts[c][2]*u]);
+    }
+  }
+  const edgePairs=[[0,2],[0,3],[0,4],[0,5],[1,2],[1,3],[1,4],[1,5],[2,4],[4,3],[3,5],[5,2]];
+  for(const [a,b] of edgePairs){
+    const steps=14; const start=pts.length;
+    const va=verts[a], vb=verts[b];
+    for(let t=0;t<=steps;t++){
+      pts.push([va[0]+(vb[0]-va[0])*t/steps, va[1]+(vb[1]-va[1])*t/steps, va[2]+(vb[2]-va[2])*t/steps]);
+    }
+    for(let t=0;t<steps;t++) edges.push([start+t,start+t+1]);
+  }
+  return {pts, edges, hue:320, name:'OCTAHEDRON'};
+}
+
+function dist3(a,b){ return Math.sqrt((a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2); }
+
+// ═══════════════════════════════════
+// RAFFI — pixel-font strokes per huruf, disusun 3D
+// ═══════════════════════════════════
+function genRaffi(N, r) {
+  const pts=[], edges=[];
+
+  // Helper: tambah garis stroke dengan titik-titik
+  function stroke(x1,y1,z1, x2,y2,z2, steps=14){
+    const s=pts.length;
+    for(let t=0;t<=steps;t++){
+      const f=t/steps;
+      pts.push([x1+(x2-x1)*f, y1+(y2-y1)*f, z1+(z2-z1)*f]);
+    }
+    for(let t=0;t<steps;t++) edges.push([s+t,s+t+1]);
+  }
+
+  // Helper: kurva busur (arc) di bidang XY
+  function arc(cx,cy,cz, rx,ry, aStart,aEnd, steps=14, zTilt=0){
+    const s=pts.length;
+    for(let t=0;t<=steps;t++){
+      const a=aStart+(aEnd-aStart)*t/steps;
+      pts.push([cx+rx*Math.cos(a), cy+ry*Math.sin(a), cz+zTilt*t/steps]);
+    }
+    for(let t=0;t<steps;t++) edges.push([s+t,s+t+1]);
+  }
+
+  // Skala & offset — 5 huruf berjajar
+  const H=r*1.1;   // tinggi huruf
+  const W=r*0.55;  // lebar huruf
+  const G=r*0.25;  // gap antar huruf
+  const Z=0;       // depth flat (huruf di bidang depan)
+  const totalW=(W*5)+(G*4);
+  const startX=-totalW/2;
+
+  // -- R --
+  let ox=startX;
+  stroke(ox,H/2,Z, ox,-H/2,Z);             // batang kiri vertikal
+  arc(ox+W*0.28,H*0.1,Z, W*0.28,H*0.4, -PI/2,PI/2, 12); // lengkung atas
+  stroke(ox,H*0.1,Z, ox+W*0.28+W*0.28,H*0.1,Z,6);       // sambungan tengah
+  stroke(ox+W*0.28,H*0.1,Z, ox+W,H/2,Z-20,12);          // kaki kanan miring (sedikit keluar 3D)
+
+  // -- A --
+  ox+=W+G;
+  stroke(ox,H/2,Z, ox+W/2,-H/2,Z);         // kaki kiri
+  stroke(ox+W/2,-H/2,Z, ox+W,H/2,Z);       // kaki kanan
+  stroke(ox+W*0.2,H*0.1,Z, ox+W*0.8,H*0.1,Z,8); // palang tengah
+
+  // -- F (pertama) --
+  ox+=W+G;
+  stroke(ox,H/2,Z, ox,-H/2,Z);             // batang vertikal
+  stroke(ox,-H/2,Z, ox+W,-H/2,Z,8);        // palang atas
+  stroke(ox,H*0.1,Z, ox+W*0.75,H*0.1,Z,8); // palang tengah
+
+  // -- F (kedua) --
+  ox+=W+G;
+  stroke(ox,H/2,Z, ox,-H/2,Z);             // batang vertikal
+  stroke(ox,-H/2,Z, ox+W,-H/2,Z,8);        // palang atas
+  stroke(ox,H*0.1,Z, ox+W*0.75,H*0.1,Z,8); // palang tengah
+
+  // -- I --
+  ox+=W+G;
+  const iCx=ox+W/2;
+  stroke(iCx,-H/2,Z, iCx,H/2,Z);           // batang tengah
+  stroke(ox,-H/2,Z, ox+W,-H/2,Z,6);        // palang atas
+  stroke(ox,H/2,Z, ox+W,H/2,Z,6);          // palang bawah
+
+  // Efek 3D: duplikat semua point ke kedalaman -r*0.3, hubungkan
+  const front=pts.map(p=>[...p]);
+  const backStart=pts.length;
+  for(const p of front) pts.push([p[0],p[1],p[2]-r*0.3]);
+  // sambungan depth per 8 titik
+  for(let i=0;i<backStart;i+=8) edges.push([i, backStart+i]);
+
+  // isi sisa partikel tersebar di area nama
+  while(pts.length<N){
+    const fi=Math.floor(Math.random()*backStart);
+    const base=pts[fi];
+    pts.push([base[0]+(Math.random()-.5)*12, base[1]+(Math.random()-.5)*12, base[2]+(Math.random()-.5)*r*0.3]);
+  }
+
+  return {pts, edges, hue:340, name:'✨ RAFFI ✨'};
+}
+
+// ═══════════════════════════════════
+// PARTICLES
+// ═══════════════════════════════════
+const NSTARS = 380;
+let targetShape = null;
+let currentHue  = 200;
+let targetHue   = 200;
+
+// each particle has a current 3D pos and a target 3D pos
+let particles = Array.from({length:NSTARS}, () => ({
+  x:(Math.random()-.5)*800, y:(Math.random()-.5)*800, z:(Math.random()-.5)*800,
+  px:0, py:0, // projected screen pos
+  vx:0, vy:0, vz:0,
+  size: Math.random()*1.4+0.4,
+  tw: Math.random()*PI*2,
+  tws: Math.random()*.025+.008,
+  targetIdx:-1,
+  tx:0, ty:0, tz:0,
+  hue:200,
+}));
+
+let shapeEdges = [];   // indices into particles for edge drawing
+let currentShapeName = '';
+
+function assignTargets(shapeObj) {
+  if(!shapeObj) return;
+  const {pts, edges, hue, name} = shapeObj;
+  targetHue = hue;
+  shapeEdges = edges;
+  currentShapeName = name;
+
+  // assign each particle a target point (with repetition if more stars than pts)
+  for(let i=0;i<NSTARS;i++){
+    const idx = i % pts.length;
+    const p   = particles[i];
+    p.tx = pts[idx][0];
+    p.ty = pts[idx][1];
+    p.tz = pts[idx][2];
+    p.targetIdx = idx;
+  }
+}
+
+// pre-generate all shapes
+const SHAPES_MAP = {
+  fist:  () => genSphere(NSTARS, 160),
+  one:   () => genCube(NSTARS, 140),
+  two:   () => genPyramid(NSTARS, 150),
+  three: () => genTorus(NSTARS, 155),
+  four:  () => genDNA(NSTARS, 130),
+  open:  () => genStar3D(NSTARS, 170),
+  rock:  () => genOctahedron(NSTARS, 155),
+  shaka: () => genRaffi(NSTARS, 90),
+};
+
+const GESTURE_META = {
+  fist:  { label:'✊ KEPALAN',  shape:'BOLA (SPHERE)',    row:0 },
+  one:   { label:'☝ 1 JARI',   shape:'KUBUS (CUBE)',     row:1 },
+  two:   { label:'✌ 2 JARI',   shape:'PIRAMIDA',         row:2 },
+  three: { label:'🤟 3 JARI',  shape:'TORUS (DONAT)',    row:3 },
+  four:  { label:'🖖 4 JARI',  shape:'DNA HELIX',        row:4 },
+  open:  { label:'✋ TELAPAK', shape:'BINTANG 3D',       row:5 },
+  rock:  { label:'🤘 ROCK',    shape:'OCTAHEDRON',       row:6 },
+  thumb: { label:'👍 JEMPOL',  shape:'LEDAKAN!',         row:7 },
+  shaka: { label:'🤙 SHAKA',   shape:'✨ RAFFI ✨',      row:8 },
+  none:  { label:'—',           shape:'tunjukkan tangan', row:-1 },
+};
+
+let currentGesture = 'none';
+let isExploding = false;
+let explodeReturnTimer = 0;
+let preExplodeGesture = 'fist'; // shape to return to after explosion
+
+function triggerExplosion() {
+  isExploding = true;
+  explodeReturnTimer = 0;
+
+  // blast every particle outward from center with random velocity
+  for(const p of particles){
+    const len = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z) || 1;
+    const speed = 18 + Math.random() * 28;
+    // radial direction + random spread
+    p.vx = (p.x/len)*speed + (Math.random()-.5)*12;
+    p.vy = (p.y/len)*speed + (Math.random()-.5)*12;
+    p.vz = (p.z/len)*speed + (Math.random()-.5)*12;
+  }
+
+  // flash hue to white-orange
+  targetHue = 28;
+  shapeEdges = []; // hide edges during explosion
+}
+
+function switchShape(g) {
+  // thumb = explode, not a shape switch
+  if(g === 'thumb'){
+    if(currentGesture === 'thumb') return; // already exploding
+    currentGesture = 'thumb';
+    triggerExplosion();
+    const meta = GESTURE_META.thumb;
+    document.getElementById('gName').textContent  = meta.label;
+    document.getElementById('gShape').textContent = '💥 ' + meta.shape;
+    document.getElementById('gName').style.color  = `hsl(28,100%,72%)`;
+    document.querySelectorAll('.grow').forEach((r,i) => {
+      r.classList.toggle('active', i === meta.row);
+      r.querySelector('.gbar').classList.toggle('active', i === meta.row);
+    });
+    return;
+  }
+
+  if(g === currentGesture || !SHAPES_MAP[g]) return;
+  preExplodeGesture = g; // remember last real shape
+  isExploding = false;
+  currentGesture = g;
+  assignTargets(SHAPES_MAP[g]());
+  const meta = GESTURE_META[g] || GESTURE_META.none;
+  document.getElementById('gName').textContent  = meta.label;
+  document.getElementById('gShape').textContent = '→ ' + meta.shape;
+  document.getElementById('gName').style.color  = `hsl(${targetHue},100%,72%)`;
+  document.querySelectorAll('.grow').forEach((r,i) => {
+    r.classList.toggle('active', i === meta.row);
+    r.querySelector('.gbar').classList.toggle('active', i === meta.row);
+  });
+}
+
+// ═══════════════════════════════════
+// ROTATION & CAMERA
+// ═══════════════════════════════════
+let rotA = 0.3, rotB = 0;
+let autoRotA = 0.003, autoRotB = 0.006;
+let zoom = 1;
+const FOV = 580;
+
+let drag=false, lmx=0, lmy=0;
+C.addEventListener('mousedown',  e=>{ drag=true; lmx=e.clientX; lmy=e.clientY; });
+C.addEventListener('mousemove',  e=>{ if(!drag)return; rotB+=(e.clientX-lmx)*.009; rotA+=(e.clientY-lmy)*.009; lmx=e.clientX; lmy=e.clientY; });
+C.addEventListener('mouseup',    ()=>drag=false);
+C.addEventListener('mouseleave', ()=>drag=false);
+C.addEventListener('wheel', e=>{ zoom=Math.max(.3,Math.min(3,zoom-e.deltaY*.001)); },{passive:true});
+C.addEventListener('touchstart', e=>{ drag=true; lmx=e.touches[0].clientX; lmy=e.touches[0].clientY; },{passive:true});
+C.addEventListener('touchmove',  e=>{ if(!drag)return; rotB+=(e.touches[0].clientX-lmx)*.011; rotA+=(e.touches[0].clientY-lmy)*.011; lmx=e.touches[0].clientX; lmy=e.touches[0].clientY; },{passive:true});
+C.addEventListener('touchend',   ()=>drag=false);
+
+// ═══════════════════════════════════
+// BG STARS (tiny static)
+// ═══════════════════════════════════
+const bgS = Array.from({length:180}, ()=>({
+  x:Math.random()*2-1, y:Math.random()*2-1,
+  sz:Math.random()*.9+.1,
+  a:Math.random()*.5+.1,
+  tw:Math.random()*PI*2, tws:Math.random()*.015+.004,
+}));
+
+// ═══════════════════════════════════
+// HAND DETECTION
+// ═══════════════════════════════════
+let handDetected = false;
+let frame = 0;
+let lastGesture = 'none';
+let gestureBuffer = [];
+
+function detectGesture(lm) {
+  const tips=[8,12,16,20], bases=[6,10,14,18];
+  const ext = tips.map((t,i)=>lm[t].y < lm[bases[i]].y);
+  const cnt = ext.filter(Boolean).length;
+  const thumbOpen = lm[4].x < lm[3].x;
+
+  if(cnt===0 && thumbOpen)                 return 'thumb'; // jempol = semua jari lipat, jempol berdiri
+  if(cnt===0)                              return 'fist';
+  if(cnt===4 && thumbOpen)                 return 'open';
+  if(cnt===1 && ext[0])                    return 'one';
+  if(cnt===2 && ext[0] && ext[1])          return 'two';
+  if(cnt===3 && ext[0]&&ext[1]&&ext[2])    return 'three';
+  if(cnt===4 && !thumbOpen)                return 'four';
+  if(!ext[1]&&!ext[2]&&ext[0]&&ext[3])    return 'rock';
+  // shaka: jempol + kelingking berdiri, jari tengah 3 terlipat
+  const pinkyUp  = lm[20].y < lm[18].y;
+  const midFolded= !ext[0] && !ext[1] && !ext[2];
+  if(thumbOpen && pinkyUp && midFolded)    return 'shaka';
+  return 'none';
+}
+
+// ═══════════════════════════════════
+// MAIN RENDER LOOP
+// ═══════════════════════════════════
+function animate() {
+  requestAnimationFrame(animate);
+  frame++;
+
+  cx.fillStyle = 'rgba(0,0,5,.2)';
+  cx.fillRect(0,0,W,H);
+
+  // explosion flash overlay
+  if(isExploding && explodeReturnTimer < 12){
+    const flashAlpha = (1 - explodeReturnTimer/12) * 0.45;
+    cx.fillStyle = `rgba(255,160,60,${flashAlpha})`;
+    cx.fillRect(0,0,W,H);
+  }
+
+  // bg stars
+  for(const s of bgS){
+    s.tw+=s.tws;
+    const tw=Math.sin(s.tw)*.2+.8;
+    cx.beginPath();
+    cx.arc(((s.x+1)/2)*W, ((s.y+1)/2)*H, s.sz*tw, 0, PI*2);
+    cx.fillStyle=`rgba(180,210,255,${s.a*tw})`;
+    cx.fill();
+  }
+
+  // lerp hue
+  currentHue += (targetHue - currentHue) * 0.04;
+
+  // auto rotate
+  if(!drag){ rotB+=autoRotB; rotA+=autoRotA*.35; }
+
+  // explosion timer — after ~90 frames (~1.5s) reassemble back to last shape
+  if(isExploding){
+    explodeReturnTimer++;
+    if(explodeReturnTimer > 90){
+      isExploding = false;
+      // snap gesture back so user can re-trigger
+      currentGesture = preExplodeGesture;
+      assignTargets(SHAPES_MAP[preExplodeGesture]());
+      // restore hue
+      targetHue = SHAPES_MAP[preExplodeGesture]().hue;
+    }
+  }
+
+  // update & project particles
+  const cx2=W/2, cy2=H/2;
+  const zScale=zoom*0.9;
+
+  // build edge drawing index (map edge targetIdx → particle index)
+  // We store which particle "represents" each vertex index
+  const vertToParticle = new Map();
+  for(let i=0;i<particles.length;i++){
+    const ti=particles[i].targetIdx;
+    if(!vertToParticle.has(ti)) vertToParticle.set(ti,i);
+  }
+
+  for(const p of particles){
+    p.tw+=p.tws;
+    const tw=Math.sin(p.tw)*.25+.75;
+
+    if(isExploding){
+      // during explosion: pure inertia + gravity-like drag, no spring pull
+      p.vx*=.97; p.vy*=.97; p.vz*=.97;
+      p.x+=p.vx; p.y+=p.vy; p.z+=p.vz;
+    } else {
+      // spring toward target
+      const dx=p.tx*zScale-p.x, dy=p.ty*zScale-p.y, dz=p.tz*zScale-p.z;
+      p.vx+=dx*.055; p.vy+=dy*.055; p.vz+=dz*.055;
+      p.vx*=.72; p.vy*=.72; p.vz*=.72;
+      p.x+=p.vx; p.y+=p.vy; p.z+=p.vz;
+    }
+
+    // 3d rotate
+    let pt=[p.x,p.y,p.z];
+    pt=rotX(pt,rotA); pt=rotY(pt,rotB);
+    const [sx,sy,sc]=proj(pt,FOV,cx2,cy2);
+    p.px=sx; p.py=sy;
+
+    const depth=Math.min(1,sc*1.4)*tw;
+    const isRaffi = (currentGesture==='shaka' && !isExploding);
+    const explodeMult = isExploding ? 1.8 + Math.random()*0.4 : 1;
+    const raffiMult  = isRaffi ? 1.3 : 1;
+    const sz=Math.max(.3,sc*p.size*2.2*explodeMult*raffiMult);
+    // Raffi: pelangi bergerak per partikel; explode: warna random; biasa: hue tema
+    const h = isExploding ? (currentHue + Math.random()*80-40+360)%360
+            : isRaffi     ? (currentHue + p.tw*40)%360
+            : currentHue;
+
+    // glow
+    if(sz>1.2){
+      const glowR = sz*(isExploding ? 5 : isRaffi ? 4.5 : 3.5);
+      const g=cx.createRadialGradient(sx,sy,0,sx,sy,glowR);
+      g.addColorStop(0,`hsla(${h},100%,88%,${depth*(isExploding?.55:isRaffi?.5:.35)})`);
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      cx.fillStyle=g; cx.beginPath(); cx.arc(sx,sy,glowR,0,PI*2); cx.fill();
+    }
+
+    // dot — Raffi: gambar bintang kecil (✦) bukan lingkaran
+    if(isRaffi && sz>1.5){
+      // 4-point star
+      cx.save();
+      cx.translate(sx,sy);
+      cx.rotate(p.tw*0.5);
+      cx.fillStyle=`hsla(${h},100%,97%,${depth})`;
+      cx.beginPath();
+      for(let k=0;k<8;k++){
+        const a=k*PI/4;
+        const rr=k%2===0?sz*1.8:sz*0.6;
+        k===0?cx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr):cx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);
+      }
+      cx.closePath(); cx.fill();
+      cx.restore();
+    } else {
+      cx.beginPath(); cx.arc(sx,sy,sz,0,PI*2);
+      cx.fillStyle=`hsla(${h},100%,96%,${depth})`;
+      cx.fill();
+    }
+  }
+
+  // draw edges (structural lines between particles)
+  if(shapeEdges.length){
+    cx.lineWidth=.7;
+    for(const [a,b] of shapeEdges){
+      const pa=vertToParticle.get(a), pb=vertToParticle.get(b);
+      if(pa==null||pb==null) continue;
+      const A=particles[pa], B=particles[pb];
+      const distPx=Math.hypot(A.px-B.px,A.py-B.py);
+      if(distPx>200) continue;
+      const alpha=Math.max(0,.55-distPx/380);
+      const isRaffiEdge=(currentGesture==='shaka'&&!isExploding);
+      if(isRaffiEdge){
+        // gradient pelangi per edge
+        const grad=cx.createLinearGradient(A.px,A.py,B.px,B.py);
+        grad.addColorStop(0,`hsla(${(currentHue+frame*2)%360},100%,72%,${alpha})`);
+        grad.addColorStop(1,`hsla(${(currentHue+frame*2+60)%360},100%,72%,${alpha})`);
+        cx.strokeStyle=grad;
+        cx.lineWidth=1.1;
+      } else {
+        cx.strokeStyle=`hsla(${currentHue},80%,70%,${alpha})`;
+        cx.lineWidth=.7;
+      }
+      cx.beginPath(); cx.moveTo(A.px,A.py); cx.lineTo(B.px,B.py);
+      cx.stroke();
+    }
+  }
+}
+animate();
+
+// ═══════════════════════════════════
+// MEDIAPIPE
+// ═══════════════════════════════════
+const hands = new Hands({ locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:.72, minTrackingConfidence:.65 });
+
+hands.onResults(res=>{
+  HC.width=vid.videoWidth||200;
+  HC.height=vid.videoHeight||150;
+  hx.clearRect(0,0,HC.width,HC.height);
+
+  if(res.multiHandLandmarks&&res.multiHandLandmarks.length){
+    const lm=res.multiHandLandmarks[0];
+    handDetected=true;
+
+    const g=detectGesture(lm);
+    // buffer for stability (3 frames same gesture)
+    gestureBuffer.push(g);
+    if(gestureBuffer.length>4) gestureBuffer.shift();
+    const stable=gestureBuffer.every(x=>x===g);
+    if(stable && g!=='none') switchShape(g);
+
+    drawHand(lm);
+  } else {
+    handDetected=false;
+    gestureBuffer=[];
+  }
+});
+
+function drawHand(lm){
+  const cw=HC.width, ch=HC.height;
+  const conn=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+  hx.strokeStyle=`hsla(${currentHue},80%,70%,.7)`; hx.lineWidth=1.2;
+  for(const[a,b]of conn){
+    hx.beginPath(); hx.moveTo(lm[a].x*cw,lm[a].y*ch);
+    hx.lineTo(lm[b].x*cw,lm[b].y*ch); hx.stroke();
+  }
+  for(const p of lm){
+    hx.beginPath(); hx.arc(p.x*cw,p.y*ch,2.5,0,PI*2);
+    hx.fillStyle=`hsl(${currentHue},100%,85%)`; hx.fill();
+  }
+}
+
+const camera=new Camera(vid,{
+  onFrame:async()=>{ await hands.send({image:vid}); },
+  width:320, height:240
+});
+camera.start()
+  .then(()=>{ document.getElementById('status').innerHTML='<span class="dot"></span>KAMERA AKTIF'; })
+  .catch(()=>{ document.getElementById('status').textContent='⚠ KAMERA GAGAL'; });
+</script>
+</body>
+</html>
